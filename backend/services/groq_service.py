@@ -161,6 +161,22 @@ _FALLBACK_TREATMENTS = {
 }
 
 
+_RETRY_PROMPT = """The previous response could not be parsed as JSON. Return ONLY a valid JSON object for a {disease} diagnosis — no markdown, no code fences, no text outside the braces. Start your response with {{ and end with }}."""
+
+
+def _extract_json(raw: str) -> dict:
+    """Strip surrounding text, fix single quotes, then parse."""
+    first = raw.find("{")
+    last = raw.rfind("}")
+    if first == -1 or last == -1:
+        raise ValueError("No JSON object found in response")
+    trimmed = raw[first : last + 1]
+    # Replace single quotes only outside already-valid double-quoted strings
+    # Simple heuristic: swap unescaped single quotes for double quotes
+    trimmed = trimmed.replace("'", '"')
+    return json.loads(trimmed)
+
+
 async def get_treatment(disease: str, confidence: float, all_probs: dict | None = None) -> dict:
     if disease == "healthy":
         return {
@@ -181,23 +197,32 @@ async def get_treatment(disease: str, confidence: float, all_probs: dict | None 
         all_probs_str=all_probs_str,
     )
 
-    try:
+    def _call_groq(messages: list, max_tokens: int = 900) -> str:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user",   "content": user_content},
-            ],
+            messages=messages,
             temperature=0.2,
-            max_tokens=900,
+            max_tokens=max_tokens,
         )
-        raw = response.choices[0].message.content.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        data = json.loads(raw.replace("'", '"'))
+        return response.choices[0].message.content.strip()
+
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user",   "content": user_content},
+    ]
+
+    try:
+        raw = _call_groq(messages)
+        try:
+            data = _extract_json(raw)
+        except (ValueError, json.JSONDecodeError) as parse_err:
+            print(f"[groq_service] Parse failed ({parse_err}), retrying with simplified prompt")
+            retry_messages = messages + [
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content": _RETRY_PROMPT.format(disease=disease)},
+            ]
+            raw = _call_groq(retry_messages, max_tokens=900)
+            data = _extract_json(raw)
         return _map_response(data)
     except Exception as e:
         print(f"[groq_service] Groq call failed, using fallback: {e}")
