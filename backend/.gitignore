@@ -1,0 +1,28 @@
+# Environment secrets
+.env
+.env.*
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Dependencies (Node, just in case)
+node_modules/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Egg / dist
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/settings.json
