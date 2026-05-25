@@ -1,0 +1,10 @@
+{
+  "name": "greenspectra",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --names FE,BE --prefix-colors green,cyan \"cd frontend && npm run dev\" \"cd backend && .venv/bin/uvicorn main:app --reload --port 8000\""
+  },
+  "dependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
